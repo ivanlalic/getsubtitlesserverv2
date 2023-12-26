@@ -1,7 +1,6 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
-const http = require('http');
 const WebSocket = require('ws');
 
 const app = express();
@@ -10,35 +9,26 @@ const port = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cors());
 
-// Enable CORS for WebSocket
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  next();
+const server = app.listen(port, () => {
+  console.log(`Server listening at http://localhost:${port}`);
 });
 
-app.get('/', (req, res) => {
-  res.send('GetSubtitles Server running');
+// Create a WebSocket server
+const wss = new WebSocket.Server({ noServer: true });
+
+// Upgrade HTTP server to support WebSocket
+server.on('upgrade', (request, socket, head) => {
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
 });
 
-// Create an HTTP server
-const server = http.createServer(app);
+// Handle incoming WebSocket connections
+wss.on('connection', (ws) => {
+  console.log('WebSocket connection opened');
 
-// Create a WebSocket server attached to the HTTP server
-const wss = new WebSocket.Server({ server });
-
-// WebSocket connection handling
-wss.on('connection', (socket) => {
-  console.log('WebSocket connected');
-
-  // You can handle WebSocket messages here if needed
-  socket.on('message', (message) => {
-    console.log('WebSocket message received:', message);
-  });
-
-  // You can handle WebSocket disconnections here if needed
-  socket.on('close', () => {
-    console.log('WebSocket disconnected');
-  });
+  // Send a welcome message to the client
+  ws.send('WebSocket connection opened');
 });
 
 // Endpoint to handle POST requests for subtitles
@@ -68,17 +58,17 @@ app.post('/get-subtitles', async (req, res) => {
       }
     );
 
-    // Send the Gladia API response to the client
-    res.json(response.data);
-
-    // Send the response also through WebSocket
+    // Send the Gladia API response to the client via WebSocket
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify(response.data));
       }
     });
+
+    // Send a response to the original HTTP request
+    res.json(response.data);
   } catch (error) {
-    console.error(error);
+    console.error('Error:', error.response ? error.response.data : error.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -87,10 +77,13 @@ app.post('/get-subtitles', async (req, res) => {
 app.post('/webhook', (req, res) => {
   // Handle the webhook response here
   console.log('Webhook Notification Received:', req.body);
-  res.status(200).send('Webhook Notification Received');
-});
 
-// Start the server
-server.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
+  // Send the webhook response to all connected clients via WebSocket
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(req.body));
+    }
+  });
+
+  res.status(200).send('Webhook Notification Received');
 });
