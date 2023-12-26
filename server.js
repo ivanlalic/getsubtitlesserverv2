@@ -1,9 +1,13 @@
 const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
 const axios = require('axios');
 const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 app.use(express.json());
 app.use(cors());
@@ -39,7 +43,10 @@ app.post('/get-subtitles', async (req, res) => {
       }
     );
 
-    // Send the Gladia API response to the client
+    // Send the Gladia API response to the client via WebSocket
+    sendWebhookResponse(response.data);
+
+    // Send the Gladia API response to the client via HTTP
     res.json(response.data);
   } catch (error) {
     console.error(error);
@@ -47,13 +54,41 @@ app.post('/get-subtitles', async (req, res) => {
   }
 });
 
+// Function to send WebSocket messages to all connected clients
+function sendWebhookResponse(data) {
+  wss.clients.forEach((socket) => {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(data));
+    }
+  });
+}
+
 // Endpoint to handle incoming webhook notifications
 app.post('/webhook', (req, res) => {
   // Handle the webhook response here
+
+  // Send the webhook response to the client via WebSocket
+  sendWebhookResponse(req.body);
+
   console.log('Webhook Notification Received:', req.body);
   res.status(200).send('Webhook Notification Received');
 });
 
-app.listen(port, () => {
+wss.on('connection', (socket) => {
+  // Handle new WebSocket connections here
+  console.log('WebSocket client connected');
+
+  // Listen for messages from clients (if needed)
+  socket.on('message', (message) => {
+    console.log('Received message from client:', message);
+  });
+
+  // Handle WebSocket disconnections
+  socket.on('close', () => {
+    console.log('WebSocket client disconnected');
+  });
+});
+
+server.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
 });
