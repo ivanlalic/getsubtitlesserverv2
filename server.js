@@ -1,7 +1,8 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
-const WebSocket = require('ws');
+const FormData = require('form-data');
+const fs = require('fs');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -33,16 +34,43 @@ wss.on('connection', (ws) => {
 
 // Endpoint to handle POST requests for subtitles
 app.post('/get-subtitles', async (req, res) => {
-  const { audio_url } = req.body;
+  const { audio_url, videoFile } = req.body;
   const gladiaKey = "b2640069-4ce6-41bf-a551-53b4d4d9da14";
   const callbackUrl = "https://getsubtitlesserverv2.onrender.com/webhook"; // Update with your Render URL
 
   try {
-    // Make a POST request to the Gladia API
-    const response = await axios.post(
+    let audioUrl = audio_url;
+
+    // If a video file is provided, upload it to Gladia and get the audio URL
+    if (videoFile) {
+      const form = new FormData();
+      form.append('audio', fs.createReadStream(videoFile.path));
+
+      const uploadResponse = await axios.post('https://api.gladia.io/v2/upload/', form, {
+        headers: {
+          'accept': 'application/json',
+          'x-gladia-key': gladiaKey,
+          ...form.getHeaders(),
+        },
+      });
+
+      audioUrl = uploadResponse.data.audio_url;
+
+      // Cleanup the temporary video file
+      fs.unlink(videoFile.path, (err) => {
+        if (err) {
+          console.error('Error deleting temporary video file:', err);
+        } else {
+          console.log('Temporary video file deleted successfully');
+        }
+      });
+    }
+
+    // Make a POST request to the Gladia API for transcription
+    const transcriptionResponse = await axios.post(
       'https://api.gladia.io/v2/transcription/',
       {
-        audio_url,
+        audio_url: audioUrl,
         callback_url: callbackUrl,
         subtitles: true,
         subtitles_config: {
@@ -58,15 +86,15 @@ app.post('/get-subtitles', async (req, res) => {
       }
     );
 
-    // Send the Gladia API response to the client via WebSocket
+    // Send the transcription response to the client via WebSocket
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(response.data));
+        client.send(JSON.stringify(transcriptionResponse.data));
       }
     });
 
     // Send a response to the original HTTP request
-    res.json(response.data);
+    res.json(transcriptionResponse.data);
   } catch (error) {
     console.error('Error:', error.response ? error.response.data : error.message);
     res.status(500).json({ error: 'Internal server error' });
