@@ -9,7 +9,16 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
-app.use(cors());
+
+const corsOptions = {
+  origin: 'http://127.0.0.1:5500',  // Replace this with the actual origin of your frontend
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
 
 const server = app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
