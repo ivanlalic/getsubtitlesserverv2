@@ -3,6 +3,7 @@ const axios = require('axios');
 const cors = require('cors');
 const FormData = require('form-data');
 const fs = require('fs');
+const multer = require('multer');
 const WebSocket = require('ws');
 
 const app = express();
@@ -10,6 +11,9 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(cors());
+
+const storage = multer.memoryStorage(); // Use memory storage for file uploads
+const upload = multer({ storage: storage });
 
 const server = app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
@@ -28,21 +32,22 @@ wss.on('connection', (ws) => {
   ws.send('WebSocket connection opened');
 });
 
-app.post('/get-subtitles', async (req, res) => {
-  const { audio_url, videoFile } = req.body;
+app.post('/get-subtitles', upload.single('audio'), async (req, res) => {
+  const { audio_url } = req.body;
+  console.log('Received audio_url:', audio_url);
+
   const gladiaKey = "b2640069-4ce6-41bf-a551-53b4d4d9da14";
   const callbackUrl = "https://getsubtitlesserverv2.onrender.com/webhook";
 
   try {
-    let audioUrl;
+    let audioUrl = audio_url;
 
-    if (audio_url) {
-      // If the user shared an URL
-      audioUrl = audio_url;
-    } else if (videoFile) {
-      // If the user uploaded a video file
+    if (req.file) {
       const form = new FormData();
-      form.append('audio', fs.createReadStream(videoFile.path));
+      form.append('audio', req.file.buffer, {
+        filename: req.file.originalname,
+        contentType: req.file.mimetype,
+      });
 
       const uploadResponse = await axios.post('https://api.gladia.io/v2/upload/', form, {
         headers: {
@@ -54,15 +59,7 @@ app.post('/get-subtitles', async (req, res) => {
 
       audioUrl = uploadResponse.data.audio_url;
 
-      fs.unlink(videoFile.path, (err) => {
-        if (err) {
-          console.error('Error deleting temporary video file:', err);
-        } else {
-          console.log('Temporary video file deleted successfully');
-        }
-      });
-    } else {
-      throw new Error('Either audio_url or videoFile must be provided.');
+      // No need to cleanup since it's in-memory storage
     }
 
     const transcriptionResponse = await axios.post(
