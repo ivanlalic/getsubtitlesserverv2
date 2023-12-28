@@ -11,7 +11,7 @@ const port = process.env.PORT || 3000;
 app.use(express.json());
 
 const corsOptions = {
-  origin: 'http://127.0.0.1:5500',  // Replace this with the actual origin of your frontend
+  origin: 'http://localhost:5500',  // Replace this with the actual origin of your frontend
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   credentials: true,
   optionsSuccessStatus: 204,
