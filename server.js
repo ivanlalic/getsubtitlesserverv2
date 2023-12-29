@@ -5,12 +5,24 @@ const FormData = require('form-data');
 const fs = require('fs');
 const multer = require('multer');
 const WebSocket = require('ws');
+const http = require('http');
+const cron = require('node-cron');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(cors());
+
+cron.schedule('*/12 * * * *', async () => {
+  console.log('Ping server to prevent sleep');
+  try {
+      // Use axios to send a GET request to your server
+      await axios.get('https://getsubtitlesserverv2.onrender.com');
+  } catch (error) {
+      console.error('Error pinging server:', error.message);
+  }
+});
 
 const storage = multer.memoryStorage(); // Use memory storage for file uploads
 const upload = multer({ storage: storage });
