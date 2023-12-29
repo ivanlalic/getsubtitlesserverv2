@@ -19,7 +19,6 @@ const server = app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
 });
 
-// WebSocket setup
 const wss = new WebSocket.Server({ noServer: true });
 
 server.on('upgrade', (request, socket, head) => {
@@ -28,48 +27,11 @@ server.on('upgrade', (request, socket, head) => {
   });
 });
 
-// WebSocket connection handling
 wss.on('connection', (ws) => {
   console.log('WebSocket connection opened');
   ws.send('WebSocket connection opened');
 });
 
-// File path to store the data
-const dataFilePath = 'data.json';
-
-// Function to read data from the file
-const readDataFromFile = () => {
-  try {
-    const data = fs.readFileSync(dataFilePath, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    // If the file doesn't exist yet, return an empty object
-    return {};
-  }
-};
-
-// Function to write data to the file
-const writeDataToFile = (data) => {
-  fs.writeFileSync(dataFilePath, JSON.stringify(data, null, 2), 'utf8');
-};
-
-// Function to update and save the data
-const updateAndSaveData = (audioDuration, billingTime) => {
-  // Read existing data from the file
-  const existingData = readDataFromFile();
-
-  // Create or update keys in the data object
-  existingData.totalAudioDuration = (existingData.totalAudioDuration || 0) + audioDuration;
-  existingData.totalBillingTime = (existingData.totalBillingTime || 0) + billingTime;
-
-  // Save the updated data to the file
-  writeDataToFile(existingData);
-
-  // Return the updated data
-  return existingData;
-};
-
-// Handle POST requests to /get-subtitles
 app.post('/get-subtitles', upload.single('audio'), async (req, res) => {
   const { audio_url } = req.body;
   console.log('Received audio_url:', audio_url);
@@ -96,6 +58,8 @@ app.post('/get-subtitles', upload.single('audio'), async (req, res) => {
       });
 
       audioUrl = uploadResponse.data.audio_url;
+
+      // No need to cleanup since it's in-memory storage
     }
 
     const transcriptionResponse = await axios.post(
@@ -117,29 +81,22 @@ app.post('/get-subtitles', upload.single('audio'), async (req, res) => {
       }
     );
 
-    // Extract relevant metadata from the Gladia API response
-    const audioDuration = transcriptionResponse.data.payload.metadata.audio_duration;
-    const billingTime = transcriptionResponse.data.payload.metadata.billing_time;
-
-    // Update and save the cumulative data
-    const updatedData = updateAndSaveData(audioDuration, billingTime);
-
-    // Send the updated data in the response
-    res.json({
-      ...transcriptionResponse.data,
-      cumulativeData: updatedData,
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(transcriptionResponse.data));
+      }
     });
+
+    res.json(transcriptionResponse.data);
   } catch (error) {
     console.error('Error:', error.response ? error.response.data : error.message);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Handle POST requests to /webhook
 app.post('/webhook', (req, res) => {
   console.log('Webhook Notification Received:', req.body);
 
-  // Broadcast the webhook data to all WebSocket clients
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify(req.body));
@@ -147,15 +104,4 @@ app.post('/webhook', (req, res) => {
   });
 
   res.status(200).send('Webhook Notification Received');
-});
-
-// Add this route to serve the cumulative data
-app.get('/data', (req, res) => {
-  try {
-    const data = fs.readFileSync(dataFilePath, 'utf8');
-    res.json(JSON.parse(data));
-  } catch (error) {
-    console.error('Error reading data file:', error.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
 });
