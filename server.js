@@ -2,7 +2,6 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const FormData = require('form-data');
-const fs = require('fs');
 const multer = require('multer');
 const WebSocket = require('ws');
 const http = require('http');
@@ -12,15 +11,15 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
-app.use(cors());
+app.use(cors()); // Use cors middleware
 
 cron.schedule('*/12 * * * *', async () => {
   console.log('Ping server to prevent sleep');
   try {
-      // Use axios to send a GET request to your server
-      await axios.get('https://getsubtitlesserverv2.onrender.com');
+    // Use axios to send a GET request to your server
+    await axios.get('https://getsubtitlesserverv2.onrender.com');
   } catch (error) {
-      console.error('Error pinging server:', error.message);
+    console.error('Error pinging server:', error.message);
   }
 });
 
@@ -54,8 +53,9 @@ app.use((req, res, next) => {
   res.status(404).send('404 - Not Found');
 });
 
-
-app.post('/get-subtitles', upload.single('audio'), async (req, res) => {
+// Add CORS headers for specific routes
+app.options('/get-subtitles', cors()); // Enable pre-flight across the board
+app.post('/get-subtitles', cors(), upload.single('audio'), async (req, res) => {
   const { audio_url } = req.body;
   console.log('Received audio_url:', audio_url);
 
@@ -117,7 +117,8 @@ app.post('/get-subtitles', upload.single('audio'), async (req, res) => {
   }
 });
 
-app.post('/webhook', (req, res) => {
+app.options('/webhook', cors()); // Enable pre-flight across the board
+app.post('/webhook', cors(), (req, res) => {
   console.log('Webhook Notification Received:', req.body);
 
   wss.clients.forEach((client) => {
