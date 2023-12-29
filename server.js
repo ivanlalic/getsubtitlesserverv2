@@ -44,6 +44,17 @@ wss.on('connection', (ws) => {
   ws.send('WebSocket connection opened');
 });
 
+// Your routes go here
+app.get('/', (req, res) => {
+  res.send('Hello, this is the GetSubtitles Server');
+});
+
+// 404 handler middleware
+app.use((req, res, next) => {
+  res.status(404).send('404 - Not Found');
+});
+
+
 app.post('/get-subtitles', upload.single('audio'), async (req, res) => {
   const { audio_url } = req.body;
   console.log('Received audio_url:', audio_url);
